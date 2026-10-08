@@ -1,52 +1,110 @@
 id: find-swagger-definition
 
 info:
-  name: Find Swagger Definition Files
+  name: Find Swagger / OpenAPI Definition Files
   author: Enes Ismaili
   severity: info
-  description: This template attempts to find Swagger definition files in common locations.
+  description: |
+    Attempts to discover Swagger 2.x / OpenAPI 3.x definition files in common
+    locations. Content is validated against real spec keys to reduce false
+    positives from Swagger-UI HTML pages.
+  reference:
+    - https://swagger.io/specification/
+    - https://github.com/OAI/OpenAPI-Specification
+  classification:
+    cwe-id: CWE-200
+  metadata:
+    max-request: 32
+  tags: exposure,swagger,openapi,api
 
-requests:
+http:
   - method: GET
     path:
+      # --- Swagger 2.x ---
+      - "{{BaseURL}}/swagger.json"
+      - "{{BaseURL}}/swagger.yaml"
+      - "{{BaseURL}}/swagger.yml"
       - "{{BaseURL}}/swagger/v1/swagger.json"
       - "{{BaseURL}}/swagger/v2/swagger.json"
       - "{{BaseURL}}/swagger/v3/swagger.json"
-      - "{{BaseURL}}/swagger.json"
-      - "{{BaseURL}}/swagger.yaml"
-      - "{{BaseURL}}/swagger/v1/swagger.yaml"
-      - "{{BaseURL}}/swagger/v2/swagger.yaml"
-      - "{{BaseURL}}/swagger/v3/swagger.yaml"
-      - "{{BaseURL}}/swagger-docs"
       - "{{BaseURL}}/api/swagger.json"
       - "{{BaseURL}}/api/swagger.yaml"
       - "{{BaseURL}}/v1/swagger.json"
       - "{{BaseURL}}/v2/swagger.json"
       - "{{BaseURL}}/v3/swagger.json"
-      - "{{BaseURL}}/api-docs"
-      - "{{BaseURL}}/api-docs/swagger.json"
-      - "{{BaseURL}}/api-docs/swagger.yaml"
       - "{{BaseURL}}/api/v1/swagger.json"
       - "{{BaseURL}}/api/v2/swagger.json"
-      - "{{BaseURL}}/api/swagger/docs"
       - "{{BaseURL}}/docs/swagger.json"
-      - "{{BaseURL}}/docs/api-docs"
+      - "{{BaseURL}}/api-docs/swagger.json"
+      - "{{BaseURL}}/api-docs/swagger.yaml"
+
+      # --- Springfox / Springdoc ---
       - "{{BaseURL}}/v1/api-docs"
       - "{{BaseURL}}/v2/api-docs"
+      - "{{BaseURL}}/v3/api-docs"
+      - "{{BaseURL}}/v3/api-docs.yaml"
+      - "{{BaseURL}}/api/v3/api-docs"
+      - "{{BaseURL}}/api-docs"
+      - "{{BaseURL}}/swagger-resources"
       - "{{BaseURL}}/swagger/docs/v1"
       - "{{BaseURL}}/swagger/docs/v2"
-      - "{{BaseURL}}/swagger-resources"
+
+      # --- OpenAPI 3.x ---
       - "{{BaseURL}}/openapi.json"
       - "{{BaseURL}}/openapi.yaml"
       - "{{BaseURL}}/openapi/v1/openapi.json"
       - "{{BaseURL}}/openapi/v2/openapi.json"
+      - "{{BaseURL}}/openapi/v3/openapi.json"
+      - "{{BaseURL}}/docs/openapi.json"
+      - "{{BaseURL}}/docs/openapi.yaml"
+
+    redirects: true
+    max-redirects: 2
+    stop-at-first-match: false
+
     matchers-condition: and
     matchers:
+      # 1. It responded OK
       - type: status
         status:
           - 200
-      - type: word
-        words:
-          - "swagger"
-          - "openapi"
 
+      # 2. Reject HTML / Swagger-UI pages
+      - type: dsl
+        dsl:
+          - "!contains(tolower(body), '<html')"
+          - "!contains(tolower(body), '<!doctype')"
+          - "!contains(tolower(body), '<script')"
+          - "len(body) > 60"
+
+      # 3. Must actually look like a Swagger / OpenAPI document
+      - type: regex
+        part: body
+        regex:
+          # JSON form
+          - '(?i)"(swagger|openapi)"\s*:\s*"(1\.0|2\.0|3\.0|3\.1|3\.2)[^"]*"'
+          # YAML form
+          - '(?im)^\s*(swagger|openapi)\s*:\s*["'']?(1\.0|2\.0|3\.0|3\.1|3\.2)'
+        condition: or
+
+    extractors:
+      - type: regex
+        name: basePath
+        part: body
+        group: 1
+        regex:
+          - '(?i)"basePath"\s*:\s*"([^"]+)"'
+
+      - type: regex
+        name: server_url
+        part: body
+        group: 1
+        regex:
+          - '(?i)"servers"\s*:\s*\[\s*\{[^}]*"url"\s*:\s*"([^"]+)"'
+
+      - type: regex
+        name: spec_version
+        part: body
+        group: 2
+        regex:
+          - '(?i)"(swagger|openapi)"\s*:\s*"([^"]+)"'
